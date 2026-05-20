@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>臺灣醫療資源空間分布與互動查詢系統</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body class="bg-slate-50 text-slate-800 font-sans">
+
+    <header class="bg-blue-900 text-white p-5 shadow-md">
+        <div class="container mx-auto flex justify-between items-center">
+            <div>
+                <h1 class="text-2xl font-bold tracking-wide">老化浪潮下的醫療地圖</h1>
+                <p class="text-sm text-blue-200 mt-1">臺灣地區醫院空間分布與區域配置差異分析系統</p>
+            </div>
+            <span class="bg-blue-700 text-xs px-3 py-1.5 rounded-full font-mono">Data Analysis Dashboard v1.0</span>
+        </div>
+    </header>
+
+    <main class="container mx-auto p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <section class="lg:col-span-3 bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col gap-5">
+            <h2 class="text-lg font-bold border-b pb-2 border-slate-100 text-slate-700 flex items-center gap-2">
+                🔍 互動式查詢篩選
+            </h2>
+
+            <div>
+                <label class="block text-sm font-semibold text-slate-600 mb-2">選擇縣市</label>
+                <select id="countySelect"
+                    class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="all">全部縣市</option>
+                    <option value="高雄市">高雄市</option>
+                    <option value="屏東縣">屏東縣</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-sm font-semibold text-slate-600 mb-2">選擇診療科別</label>
+                <select id="deptSelect"
+                    class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="all">全部科別</option>
+                    <option value="家醫科">家醫科</option>
+                    <option value="內科">內科</option>
+                    <option value="復健科">復健科</option>
+                    <option value="兒科">兒科</option>
+                </select>
+            </div>
+
+            <hr class="border-slate-100">
+
+            <div class="flex-1 flex flex-col min-h-[300px]">
+                <label class="block text-sm font-semibold text-slate-600 mb-2">符合條件之醫院 (點擊查看詳情)</label>
+                <div id="hospitalList"
+                    class="flex-1 overflow-y-auto max-h-[400px] border border-slate-100 rounded-lg p-2 space-y-2 bg-slate-50/50">
+                </div>
+            </div>
+        </section>
+
+        <section class="lg:col-span-9 flex flex-col gap-6">
+
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="text-lg font-bold text-slate-700 flex items-center gap-2">🗺️ 台灣醫療資源分布圖</h2>
+                    <span class="text-xs text-slate-400">含有座標之特約地區醫院點位</span>
+                </div>
+                <div id="map" class="w-full h-[450px] rounded-xl z-10 shadow-inner"></div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+                    <h3 class="text-md font-bold text-slate-700 mb-3">📊 各縣市醫院數量與每萬人密度</h3>
+                    <div class="h-[250px] flex items-center justify-center">
+                        <canvas id="barChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+                    <h3 class="text-md font-bold text-slate-700 mb-3">🔥 核心診療科別覆蓋熱度</h3>
+                    <div class="h-[250px] flex items-center justify-center">
+                        <canvas id="radarChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+    </main>
+
+    <div id="infoModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center hidden">
+        <div class="bg-white rounded-2xl max-w-lg w-full m-4 p-6 shadow-xl transform transition-all">
+            <div class="flex justify-between items-start border-b pb-3 border-slate-100">
+                <h3 id="modalName" class="text-xl font-bold text-blue-900">醫院名稱</h3>
+                <button onclick="closeModal()"
+                    class="text-slate-400 hover:text-slate-600 font-bold text-lg">&times;</button>
+            </div>
+            <div class="mt-4 space-y-3 text-sm">
+                <p><strong>🏥 醫事種類：</strong><span id="modalType">-</span></p>
+                <p><strong>📞 電話：</strong><span id="modalPhone">-</span></p>
+                <p><strong>📍 地址：</strong><span id="modalAddr">-</span></p>
+                <p><strong>🩺 診療科別：</strong><span id="modalDepts" class="text-blue-700 font-medium">-</span></p>
+                <div class="bg-slate-50 p-3 rounded-lg border border-slate-100 mt-2">
+                    <p class="font-semibold text-slate-700 mb-1">📅 固定看診時間與備註：</p>
+                    <p id="modalTime" class="text-slate-600 text-xs leading-relaxed max-h-[120px] overflow-y-auto">-</p>
+                </div>
+            </div>
+            <div class="mt-5 text-right">
+                <button onclick="closeModal()"
+                    class="bg-slate-200 text-slate-700 text-sm px-4 py-2 rounded-lg hover:bg-slate-300 transition">關閉</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 假設你轉換出來的檔案叫 village.json
+        fetch('village.json')
+            .then(response => response.json())
+            .then(geojsonData => {
+                // 使用 Leaflet 載入村里界
+                L.geoJSON(geojsonData, {
+                    style: function (feature) {
+                        // 這裡可以根據村里資料動態給顏色（例如高齡人口比例）
+                        return {
+                            color: "#666",       // 邊界線顏色
+                            weight: 1,          // 邊界線粗細
+                            fillColor: "#3b82f6",// 區塊填滿顏色
+                            fillOpacity: 0.2    // 透明度
+                        };
+                    },
+                    onEachFeature: function (feature, layer) {
+                        // 讓每個村里被點擊時，會彈出視窗顯示村里名稱
+                        if (feature.properties && feature.properties.VILLNAME) {
+                            layer.bindPopup("村里名稱：" + feature.properties.VILLNAME);
+                        }
+                    }
+                }).addTo(map); // map 是你的 Leaflet 地圖物件
+            })
+            .catch(error => console.error('地圖載入失敗:', error));
+        // 1. 根據你上傳的真實資料 A21030000I-D21003-003.csv 抽樣轉換的 JSON 資料
+        const mockHospitalData = [
+            {
+                id: "0102080017",
+                name: "高雄市立民生醫院",
+                type: "綜合醫院",
+                phone: "(07)7511131",
+                addr: "高雄市苓雅區凱旋二路１３４號",
+                county: "高雄市",
+                depts: ["家醫科", "內科", "外科", "兒科", "婦產科", "骨科", "神經科", "復健科"],
+                time: "星期一至五全天看診、星期六上午看診。急診全年為24小時全時段看診。",
+                lat: 22.6247,
+                lng: 120.3242
+            },
+            {
+                id: "1543010190",
+                name: "民眾醫院",
+                type: "醫院",
+                phone: "(08)7325455",
+                addr: "屏東縣屏東市忠孝路１２０之１號",
+                county: "屏東縣",
+                depts: ["家醫科", "內科", "神經科", "復健科"],
+                time: "星期一至五全天及晚上看診、星期六上午看診、六下午及星期日休診。",
+                lat: 22.6765,
+                lng: 120.4960
+            }
+        ];
+
+        // 2. 初始化地圖 (設定中心點在南部，方便看我們塞的示範點)
+        var map = L.map('map').setView([22.65, 120.4], 10);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        let markerGroup = L.layerGroup().addTo(map);
+
+        // 3. 初始化圖表 (Chart.js)
+        const ctxBar = document.getElementById('barChart').getContext('2d');
+        const barChart = new Chart(ctxBar, {
+            type: 'bar',
+            data: {
+                labels: ['高雄市', '屏東縣', '臺南市', '嘉義縣'],
+                datasets: [{
+                    label: '每萬人口地區醫院數',
+                    data: [0.85, 1.2, 0.65, 0.45],
+                    backgroundColor: 'rgba(59, 130, 246, 0.7)',
+                    borderColor: 'rgb(59, 130, 246)',
+                    borderWidth: 1
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+
+        const ctxRadar = document.getElementById('radarChart').getContext('2d');
+        const radarChart = new Chart(ctxRadar, {
+            type: 'radar',
+            data: {
+                labels: ['家醫科', '內科', '復健科', '兒科', '婦產科'],
+                datasets: [
+                    { label: '高雄市', data: [90, 85, 70, 60, 50], borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.2)' },
+                    { label: '屏東縣', data: [95, 75, 80, 40, 30], borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.2)' }
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+
+        // 4. 資料篩選與渲染邏輯
+        const countySelect = document.getElementById('countySelect');
+        const deptSelect = document.getElementById('deptSelect');
+        const hospitalList = document.getElementById('hospitalList');
+
+        function updateDashboard() {
+            const selectedCounty = countySelect.value;
+            const selectedDept = deptSelect.value;
+
+            // 清除現有地圖標記與列表
+            markerGroup.clearLayers();
+            hospitalList.innerHTML = '';
+
+            // 篩選符合條件的醫院
+            const filteredData = mockHospitalData.filter(h => {
+                const matchCounty = selectedCounty === 'all' || h.county === selectedCounty;
+                const matchDept = selectedDept === 'all' || h.depts.includes(selectedDept);
+                return matchCounty && matchDept;
+            });
+
+            // 渲染列表與地圖點位
+            filteredData.forEach(h => {
+                // 1. 加地圖標記
+                const marker = L.marker([h.lat, h.lng])
+                    .bindPopup(`<b>${h.name}</b><br>${h.addr}<br><button class="text-blue-600 text-xs underline font-bold mt-1" onclick="openModal('${h.id}')">點我查看看診時間</button>`);
+                markerGroup.addLayer(marker);
+
+                // 2. 加側邊欄列表
+                const item = document.createElement('div');
+                item.className = "bg-white p-3 rounded-lg border border-slate-200 hover:border-blue-400 cursor-pointer shadow-sm transition";
+                item.innerHTML = `<h4 class="font-bold text-slate-700 text-sm">${h.name}</h4>
+                                  <p class="text-xs text-slate-400 mt-1">📍 ${h.county} | ${h.type}</p>`;
+                item.onclick = () => {
+                    map.setView([h.lat, h.lng], 13);
+                    marker.openPopup();
+                };
+                hospitalList.appendChild(item);
+            });
+
+            if (filteredData.length === 0) {
+                hospitalList.innerHTML = `<p class="text-xs text-slate-400 p-4 text-center">無符合篩選條件的醫院</p>`;
+            }
+        }
+
+        // 5. 燈箱互動 (檢視看診時間)
+        function openModal(id) {
+            const h = mockHospitalData.find(item => item.id === id);
+            if (!h) return;
+            document.getElementById('modalName').innerText = h.name;
+            document.getElementById('modalType').innerText = h.type;
+            document.getElementById('modalPhone').innerText = h.phone;
+            document.getElementById('modalAddr').innerText = h.addr;
+            document.getElementById('modalDepts').innerText = h.depts.join(', ');
+            document.getElementById('modalTime').innerText = h.time;
+            document.getElementById('infoModal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('infoModal').classList.add('hidden');
+        }
+
+        // 綁定篩選事件
+        countySelect.onchange = updateDashboard;
+        deptSelect.onchange = updateDashboard;
+
+        // 初始化執行一次
+        updateDashboard();
+    </script>
+</body>
+
+</html>
