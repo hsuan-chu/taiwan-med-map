@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>臺灣醫療資源空間分布與互動查詢系統</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="data.js"></script>
+</head>
+
+<body class="bg-slate-50 text-slate-800 font-sans">
+
+    <header class="bg-blue-900 text-white p-5 shadow-md">
+        <div class="container mx-auto flex justify-between items-center">
+            <div>
+                <h1 class="text-2xl font-bold tracking-wide">老化浪潮下的醫療地圖</h1>
+                <p class="text-sm text-blue-200 mt-1">臺灣地區醫院空間分布與區域配置差異 analysis 系統</p>
+            </div>
+            <span class="bg-blue-700 text-xs px-3 py-1.5 rounded-full font-mono">Data Analysis Dashboard v2.5</span>
+        </div>
+    </header>
+
+    <main class="container mx-auto p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <section class="lg:col-span-3 bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col gap-5">
+            <h2 class="text-lg font-bold border-b pb-2 border-slate-100 text-slate-700 flex items-center gap-2">
+                🔍 互動式查詢篩選
+            </h2>
+
+            <div>
+                <label class="block text-sm font-semibold text-slate-600 mb-2">選擇縣市</label>
+                <select id="countySelect" class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-sm font-semibold text-slate-600 mb-2">選擇診療科別</label>
+                <select id="deptSelect" class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </select>
+            </div>
+
+            <hr class="border-slate-100">
+
+            <div class="flex-1 flex flex-col min-h-[350px]">
+                <label class="block text-sm font-semibold text-slate-600 mb-2">符合條件之醫院清單</label>
+                <div id="hospitalList" class="flex-1 overflow-y-auto max-h-[450px] border border-slate-100 rounded-lg p-2 space-y-2 bg-slate-50/50">
+                </div>
+            </div>
+        </section>
+
+        <section class="lg:col-span-9 flex flex-col gap-6">
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="text-lg font-bold text-slate-700 flex items-center gap-2">🗺️ 台灣醫療資源分布圖</h2>
+                    <span id="totalCountBadge" class="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded-full">正在載入醫院...</span>
+                </div>
+                <div id="map" class="w-full h-[500px] rounded-xl z-10 shadow-inner"></div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+                    <h3 class="text-md font-bold text-slate-700 mb-3">📊 篩選範圍內各縣市醫院數量</h3>
+                    <div class="h-[280px]">
+                        <canvas id="barChart"></canvas>
+                    </div>
+                </div>
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+                    <h3 class="text-md font-bold text-slate-700 mb-3">🔥 熱門診療科別設立排行 Top 6</h3>
+                    <div class="h-[280px]">
+                        <canvas id="radarChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <div id="infoModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center hidden">
+        <div class="bg-white rounded-2xl max-w-lg w-full m-4 p-6 shadow-xl">
+            <div class="flex justify-between items-start border-b pb-3 border-slate-100">
+                <h3 id="modalName" class="text-xl font-bold text-blue-900">醫院名稱</h3>
+                <button onclick="closeModal()" class="text-slate-400 hover:text-slate-600 font-bold text-lg">&times;</button>
+            </div>
+            <div class="mt-4 space-y-3 text-sm">
+                <p><strong>🏥 醫事種類：</strong><span id="modalType">-</span></p>
+                <p><strong>📞 電話：</strong><span id="modalPhone">-</span></p>
+                <p><strong>📍 地址：</strong><span id="modalAddr">-</span></p>
+                <p><strong>🩺 診療科別：</strong><span id="modalDepts" class="text-blue-700 font-medium">-</span></p>
+                <div class="bg-slate-50 p-3 rounded-lg border border-slate-100 mt-2">
+                    <p class="font-semibold text-slate-700 mb-1">📅 固定看診時間：</p>
+                    <p id="modalTime" class="text-slate-600 text-xs leading-relaxed max-h-[120px] overflow-y-auto">-</p>
+                </div>
+            </div>
+            <div class="mt-5 text-right">
+                <button onclick="closeModal()" class="bg-slate-200 text-slate-700 text-sm px-4 py-2 rounded-lg hover:bg-slate-300 transition">關閉</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 1. 初始化地圖
+        var map = L.map('map').setView([23.7, 120.8], 7.5);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        let markerGroup = L.layerGroup().addTo(map);
+        let barChart, radarChart;
+
+        // 2. 從 data.js 的變數中自動生成下拉選單
+        function setupFiltersAndCharts() {
+            const counties = new Set();
+            const depts = new Set();
+
+            // mockHospitalData 變數來自外掛的 data.js
+            mockHospitalData.forEach(h => {
+                if (h.county) counties.add(h.county);
+                if (h.depts) h.depts.forEach(d => depts.add(d));
+            });
+
+            const countySelect = document.getElementById('countySelect');
+            countySelect.innerHTML = '<option value="all">全部縣市</option>';
+            Array.from(counties).sort().forEach(c => {
+                countySelect.innerHTML += `<option value="${c}">${c}</option>`;
+            });
+
+            const deptSelect = document.getElementById('deptSelect');
+            deptSelect.innerHTML = '<option value="all">全部科別</option>';
+            Array.from(depts).sort().forEach(d => {
+                deptSelect.innerHTML += `<option value="${d}">${d}</option>`;
+            });
+
+            // 初始化 Chart.js
+            const ctxBar = document.getElementById('barChart').getContext('2d');
+            barChart = new Chart(ctxBar, {
+                type: 'bar',
+                data: { labels: [], datasets: [{ label: '醫院家數', data: [], backgroundColor: 'rgba(59, 130, 246, 0.7)' }] },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+
+            const ctxRadar = document.getElementById('radarChart').getContext('2d');
+            radarChart = new Chart(ctxRadar, {
+                type: 'bar', 
+                data: { labels: [], datasets: [{ label: '開設之醫院數量', data: [], backgroundColor: 'rgba(16, 185, 129, 0.7)' }] },
+                options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y' }
+            });
+        }
+
+        // 3. 核心大數據過濾與渲染
+        function updateDashboard() {
+            const selectedCounty = document.getElementById('countySelect').value;
+            const selectedDept = document.getElementById('deptSelect').value;
+
+            markerGroup.clearLayers();
+            const listContainer = document.getElementById('hospitalList');
+            listContainer.innerHTML = '';
+
+            const filteredData = mockHospitalData.filter(h => {
+                const matchCounty = selectedCounty === 'all' || h.county === selectedCounty;
+                const matchDept = selectedDept === 'all' || h.depts.includes(selectedDept);
+                return matchCounty && matchDept;
+            });
+
+            document.getElementById('totalCountBadge').innerText = `符合條件：${filteredData.length} 家醫院`;
+
+            const countyCounts = {};
+            const deptCounts = {};
+
+            filteredData.forEach(h => {
+                // 在地圖打點
+                const marker = L.marker([h.lat, h.lng]).bindPopup(`
+                    <div class="font-sans">
+                        <b class="text-sm text-blue-900">${h.name}</b><br>
+                        <span class="text-xs text-slate-500">${h.addr}</span><br>
+                        <button class="text-blue-600 text-xs underline font-bold mt-1 block" onclick="openModal('${h.id}')">查看完整看診時間</button>
+                    </div>
+                `);
+                markerGroup.addLayer(marker);
+
+                // 側邊欄列表
+                const item = document.createElement('div');
+                item.className = "bg-white p-2.5 rounded-lg border border-slate-200 hover:border-blue-400 cursor-pointer shadow-sm transition text-left text-xs";
+                item.innerHTML = `<h4 class="font-bold text-slate-700">${h.name}</h4>
+                                  <p class="text-[11px] text-slate-400 mt-0.5">📍 ${h.county} | ${h.type}</p>`;
+                item.onclick = () => {
+                    map.setView([h.lat, h.lng], 14);
+                    marker.openPopup();
+                };
+                listContainer.appendChild(item);
+
+                // 收集圖表統計
+                countyCounts[h.county] = (countyCounts[h.county] || 0) + 1;
+                h.depts.forEach(d => {
+                    deptCounts[d] = (deptCounts[d] || 0) + 1;
+                });
+            });
+
+            if (filteredData.length === 0) {
+                listContainer.innerHTML = `<p class="text-xs text-slate-400 p-4 text-center">無符合篩選條件的醫院</p>`;
+            }
+
+            // 更新圖表
+            const sortedCounties = Object.entries(countyCounts).sort((a,b) => b[1] - a[1]);
+            barChart.data.labels = sortedCounties.map(x => x[0]);
+            barChart.data.datasets[0].data = sortedCounties.map(x => x[1]);
+            barChart.update();
+
+            const sortedDepts = Object.entries(deptCounts).sort((a,b) => b[1] - a[1]).slice(0, 6);
+            radarChart.data.labels = sortedDepts.map(x => x[0]);
+            radarChart.data.datasets[0].data = sortedDepts.map(x => x[1]);
+            radarChart.update();
+        }
+
+        function openModal(id) {
+            const h = mockHospitalData.find(item => item.id === id);
+            if (!h) return;
+            document.getElementById('modalName').innerText = h.name;
+            document.getElementById('modalType').innerText = h.type;
+            document.getElementById('modalPhone').innerText = h.phone;
+            document.getElementById('modalAddr').innerText = h.addr;
+            document.getElementById('modalDepts').innerText = h.depts.join(', ');
+            document.getElementById('modalTime').innerText = h.time;
+            document.getElementById('infoModal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('infoModal').classList.add('hidden');
+        }
+
+        document.getElementById('countySelect').onchange = updateDashboard;
+        document.getElementById('deptSelect').onchange = updateDashboard;
+
+        // 啟動
+        setupFiltersAndCharts();
+        updateDashboard();
+    </script>
+</body>
+
+</html>
